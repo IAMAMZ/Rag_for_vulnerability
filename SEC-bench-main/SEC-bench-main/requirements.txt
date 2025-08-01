@@ -1,0 +1,17 @@
+requests>=2.31.0
+pandas>=2.0.0
+datasets>=2.14.0
+rich>=13.0.0
+loguru
+selenium
+PyGithub
+GitPython
+pyyaml
+pydantic>=2.5.0
+aiofiles
+aiohttp>=3.9.0
+docker
+beautifulsoup4
+jinja2
+poetry
+nvdlib

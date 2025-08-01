@@ -1,0 +1,62 @@
+FROM {{ base_image }}
+
+# Install dependencies
+RUN apt-get update && apt-get install -y vim jq tmux bsdmainutils wget gdb software-properties-common libgl1-mesa-glx \
+    build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev autoconf automake cmake pkg-config \
+    libssl-dev libsqlite3-dev libreadline-dev libffi-dev curl libbz2-dev checkinstall libasound2-plugins libatomic1 \
+    openssl ltrace strace valgrind hexedit gfortran patch tar unzip xz-utils zstd expect
+
+# Add i386 architecture
+RUN dpkg --add-architecture i386
+
+# Configure CA certificates
+RUN update-ca-certificates
+
+# Install OpenSSL 1.1.1w from source
+RUN cd /tmp && \
+    wget https://www.openssl.org/source/openssl-1.1.1w.tar.gz --no-check-certificate && \
+    tar -xvzf openssl-1.1.1w.tar.gz && \
+    cd openssl-1.1.1w && \
+    ./config --prefix=/usr/local/ssl --openssldir=/usr/local/ssl shared zlib && \
+    make -j$(nproc) && \
+    make install && \
+    echo "/usr/local/ssl/lib" > /etc/ld.so.conf.d/openssl-1.1.1.conf && \
+    ldconfig -v && \
+    cd .. && \
+    rm -rf openssl-1.1.1w openssl-1.1.1w.tar.gz
+
+# Set environment variables for OpenSSL
+ENV PATH="/usr/local/ssl/bin:$PATH"
+ENV LD_LIBRARY_PATH="/usr/local/ssl/lib"
+
+# Download and install Python 3.12 with SSL support
+RUN cd /tmp && \
+    wget https://www.python.org/ftp/python/3.12.5/Python-3.12.5.tgz --no-check-certificate && \
+    tar -xf Python-3.12.5.tgz && \
+    cd Python-3.12.5 && \
+    CPPFLAGS="-I/usr/local/ssl/include" \
+    LDFLAGS="-L/usr/local/ssl/lib" \
+    ./configure --enable-optimizations \
+    --with-ensurepip=install \
+    --with-openssl=/usr/local/ssl \
+    --with-openssl-rpath=auto && \
+    make -j$(nproc) && \
+    make altinstall && \
+    cd /tmp && \
+    rm -rf Python-3.12.5 Python-3.12.5.tgz
+
+# Set Python 3.12 as default using update-alternatives
+RUN update-alternatives --install /usr/bin/python python /usr/local/bin/python3.12 1 && \
+    update-alternatives --install /usr/local/bin/python3 python3 /usr/local/bin/python3.12 1 && \
+    update-alternatives --install /usr/bin/pip pip /usr/local/bin/pip3.12 1 && \
+    update-alternatives --install /usr/local/bin/pip3 pip3 /usr/local/bin/pip3.12 1
+
+# Verify Python and SSL
+RUN python --version && \
+    pip --version && \
+    python -c "import ssl; print(ssl.OPENSSL_VERSION)"
+
+# Install pipx and swe-rex dependencies
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install pipx requests && \
+    python -m pipx ensurepath 

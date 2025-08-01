@@ -1,0 +1,103 @@
+echo "Step 1: Setup environment and extract artifacts"
+# Create testcase directory
+if [ -d "{{ work_dir }}/testcase" ]; then
+    echo "Testcase directory already exists, cleaning up"
+    rm -rf "{{ work_dir }}/testcase"
+fi
+
+mkdir -p "{{ work_dir }}/testcase" || { echo "FAIL_STEP: Failed to create testcase directory"; exit 1; }
+ln -s "{{ work_dir }}/testcase" /testcase || { echo "FAIL_STEP: Failed to create symlink to /testcase"; exit 1; }
+echo "Created testcase directory at {{ work_dir }}/testcase and linked to /testcase"
+
+# Extract the tar.gz file to a temporary location
+mkdir -p /root/extracted || { echo "FAIL_STEP: Failed to create temporary extraction directory"; exit 1; }
+if [ ! -f /tmp/poc_artifact.tar.gz ]; then
+    echo "FAIL_STEP: PoC artifact file not found at /tmp/poc_artifact.tar.gz"
+    exit 1
+fi
+
+tar -xzf /tmp/poc_artifact.tar.gz -C /root/extracted
+ret=$?
+if [ ${ret} -ne 0 ]; then
+    echo "FAIL_STEP: Extract PoC artifacts; exit code=${ret}"
+    exit ${ret}
+fi
+
+# List all extracted files for debugging
+echo "Extracted files:"
+find /root/extracted -type f | sort
+
+# Check for Python scripts in the extracted files
+echo "Looking for Python scripts in extracted files..."
+PYTHON_SCRIPT=""
+for file in $(find /root/extracted -type f); do
+    # Check if file is a Python script by examining file extension
+    if [[ $file == *.py ]]; then
+        echo "Found Python script by extension: $file"
+        PYTHON_SCRIPT="$file"
+        chmod +x "$file"
+        break
+    fi
+    
+    # Check for Python shebang patterns
+    if grep -q -E "^#!.*python" "$file" 2>/dev/null; then
+        echo "Found Python script by shebang: $file"
+        PYTHON_SCRIPT="$file"
+        chmod +x "$file"
+        break
+    fi
+    
+    # Check using file command
+    if file "$file" 2>/dev/null | grep -q -i "python script"; then
+        echo "Found Python script by file type: $file"
+        PYTHON_SCRIPT="$file"
+        chmod +x "$file"
+        break
+    fi
+done
+
+# If a Python script was found, run it
+if [ -n "$PYTHON_SCRIPT" ]; then
+    echo "Running Python script: $PYTHON_SCRIPT"
+    cd /root/extracted
+    echo "Current working directory: $(pwd)"
+    echo "Script content preview:"
+    head -n 10 "$PYTHON_SCRIPT"
+    python3 "$PYTHON_SCRIPT"
+    ret=$?
+    echo "Python script execution completed with exit code: ${ret}"
+    if [ ${ret} -ne 0 ]; then
+        echo "FAIL_STEP: Python script execution failed; exit code=${ret}"
+        exit ${ret}
+    fi
+else
+    echo "No Python scripts found in the extracted files"
+fi
+
+# Copy all files to the testcase directory
+echo "Copying extracted files to /testcase"
+cp -r /root/extracted/* /testcase/
+echo "SUCCESS: Extract and setup PoC artifacts passed"
+
+echo "Step 2: Compile"
+cd {{ work_dir }}
+secb build
+ret=$?
+if [ ${ret} -ne 0 ]; then
+    echo "FAIL_STEP: Compile; exit code=${ret}"
+    exit ${ret}
+else
+    echo "SUCCESS: Compile passed; exit code=${ret}"
+fi
+
+echo "Step 3: Run PoC"
+timeout 10 secb repro
+ret=$?
+echo "Run PoC exit code: ${ret}"
+if [ ${ret} -eq 0 ]; then
+    echo "FAIL_STEP: Run PoC; exit code=${ret}"
+    exit ${ret}
+else
+    echo "TENTATIVE: Run PoC; exit code ${ret}"
+    exit 0
+fi

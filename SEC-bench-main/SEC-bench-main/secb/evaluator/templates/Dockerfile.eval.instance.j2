@@ -1,0 +1,24 @@
+FROM {{ base_image }}
+
+# This content is dynamically inserted from the instance dataset
+{{ dockerfile_content }}
+
+# Copy helper script
+COPY {{ script_name }} /usr/local/bin/
+RUN chmod +x /usr/local/bin/{{ script_name }}
+
+# Create testcase directory (standard practice)
+RUN mkdir -p /testcase
+
+# Environment variables
+ENV SANITIZER="{{ sanitizer }}"
+ENV FUZZING_ENGINE=libfuzzer
+ENV FUZZING_LANGUAGE="{{ lang or 'c++' }}"
+ENV PROJECT_NAME="{{ project_name }}"
+ENV ARCHITECTURE=x86_64
+ENV LANG="C.UTF-8"
+ENV CFLAGS="-w -Wno-yacc -Wno-incompatible-pointer-types"
+ENV CXXFLAGS="-w -Wno-yacc -Wno-incompatible-pointer-types"
+
+# Workspace directory
+WORKDIR {{ work_dir }} 
