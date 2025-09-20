@@ -1,8 +1,0 @@
-
-[tool.ruff.lint]
-select = ["D"]
-# ignore warnings for missing docstrings
-ignore = ["D1", "D205", "D200", "D212", "D415"]
-
-[tool.ruff.lint.pydocstyle]
-convention = "google"
